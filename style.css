@@ -29,6 +29,14 @@ body.miss-flash {
   animation: damagePulse 0.18s ease;
 }
 
+body.best-score-glow {
+  animation: bestScoreGlow 0.9s ease;
+}
+
+body.final-boss-mode {
+  animation: bossBodyPulse 1.15s ease-in-out infinite;
+}
+
 body::after {
   content: '';
   position: fixed;
@@ -47,6 +55,16 @@ body::after {
 @keyframes damagePulse {
   0%, 100% { background: var(--bg); }
   45% { background: #1f0808; }
+}
+
+@keyframes bestScoreGlow {
+  0%, 100% { box-shadow: inset 0 0 0 rgba(255,230,0,0); }
+  45% { box-shadow: inset 0 0 46px rgba(255,230,0,0.2); }
+}
+
+@keyframes bossBodyPulse {
+  0%, 100% { background: #070707; }
+  50% { background: #120612; }
 }
 
 #header {
@@ -134,6 +152,19 @@ body::after {
   gap: 8px;
 }
 
+#instruction.panic-flicker {
+  border-left-color: #ff00ff;
+  animation: instructionPanic 0.42s steps(2, end) infinite;
+}
+
+#instruction.fake-gameover-flash::after {
+  content: ' GAME OVER?';
+  color: var(--accent);
+  font-weight: 700;
+  margin-left: auto;
+  animation: fakeGameOver 0.5s ease;
+}
+
 #instruction .target-word {
   color: var(--yellow);
   font-weight: 700;
@@ -156,6 +187,21 @@ body::after {
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
+  transition: background 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+  will-change: transform;
+}
+
+.final-boss-mode #arena {
+  background: #09070b;
+  border-color: rgba(255,0,255,0.46);
+  box-shadow: inset 0 0 32px rgba(255,0,255,0.13), 0 0 28px rgba(255,0,255,0.08);
+}
+
+#arena.shake-small { animation: arenaShakeSmall 0.15s ease; }
+#arena.shake-level { animation: arenaShakeLevel 0.18s ease; }
+#arena.shake-big   { animation: arenaShakeBig 0.24s ease; }
+#arena.freeze-buttons .btn-target {
+  filter: saturate(1.5) drop-shadow(0 0 9px rgba(255,230,0,0.55));
 }
 
 #arena::before {
@@ -171,6 +217,10 @@ body::after {
 
 .btn-target {
   position: absolute;
+  --btn-scale: 1;
+  --btn-rotate: 0deg;
+  --jitter-x: 0px;
+  --jitter-y: 0px;
   font-family: 'Space Mono', monospace;
   font-size: 13px;
   font-weight: 700;
@@ -183,39 +233,155 @@ body::after {
   cursor: pointer;
   white-space: nowrap;
   touch-action: manipulation;
+  transform: translate(var(--jitter-x), var(--jitter-y)) rotate(var(--btn-rotate)) scale(var(--btn-scale));
+  transform-origin: center;
   transition:
     background 0.1s,
     border-color 0.1s,
+    box-shadow 0.15s ease,
+    color 0.12s ease,
     left 0.32s cubic-bezier(.4,0,.2,1),
     top 0.32s cubic-bezier(.4,0,.2,1),
-    transform 0.3s ease,
+    transform 0.22s cubic-bezier(.2,.9,.2,1.25),
     opacity 0.25s ease,
     font-size 0.3s ease;
   z-index: 2;
+  will-change: left, top, transform, opacity;
 }
 
 .btn-target:hover {
   background: #2a2a2a;
-  border-color: #444;
+  border-color: var(--yellow);
+  color: #fff8b8;
+  box-shadow: 0 0 12px rgba(255,230,0,0.16), inset 0 0 12px rgba(255,230,0,0.05);
 }
 
 .btn-target.correct-flash {
   border-color: var(--green) !important;
   color: var(--green) !important;
-  background: rgba(0,255,136,0.1) !important;
+  background: rgba(0,255,136,0.16) !important;
+  box-shadow: 0 0 18px rgba(0,255,136,0.34), inset 0 0 12px rgba(0,255,136,0.13);
 }
 
 .btn-target.wrong-flash {
   border-color: var(--accent) !important;
   color: var(--accent) !important;
-  background: rgba(255,59,59,0.1) !important;
-  animation: shake 0.3s ease;
+  background: rgba(255,59,59,0.2) !important;
+  box-shadow: 0 0 22px rgba(255,59,59,0.38), inset 0 0 14px rgba(255,59,59,0.16);
+  animation: buttonWrongShake 0.32s ease;
 }
 
-@keyframes shake {
-  0%,100% { transform: translateX(0) scale(1); }
-  20%      { transform: translateX(-8px) scale(1); }
-  60%      { transform: translateX(8px) scale(1); }
+.btn-target.btn-pop {
+  animation: buttonPop 0.2s cubic-bezier(.18,.9,.2,1.55);
+}
+
+.btn-target.correct-bounce {
+  animation: buttonCorrectBounce 0.26s cubic-bezier(.18,.9,.2,1.4);
+}
+
+.btn-target.btn-pop.wrong-flash {
+  animation: buttonWrongShake 0.32s ease;
+}
+
+.btn-target.chaos-rotate {
+  box-shadow: 0 0 14px rgba(255,230,0,0.18);
+}
+
+.btn-target.runaway {
+  border-color: var(--green);
+  box-shadow: 0 0 12px rgba(0,255,136,0.24);
+}
+
+@keyframes buttonWrongShake {
+  0%, 100% { transform: translate(var(--jitter-x), var(--jitter-y)) rotate(var(--btn-rotate)) scale(var(--btn-scale)); }
+  20% { transform: translate(calc(var(--jitter-x) - 8px), var(--jitter-y)) rotate(var(--btn-rotate)) scale(var(--btn-scale)); }
+  60% { transform: translate(calc(var(--jitter-x) + 8px), var(--jitter-y)) rotate(var(--btn-rotate)) scale(var(--btn-scale)); }
+}
+
+@keyframes buttonPop {
+  0% { transform: translate(var(--jitter-x), var(--jitter-y)) rotate(var(--btn-rotate)) scale(var(--btn-scale)); }
+  45% { transform: translate(var(--jitter-x), var(--jitter-y)) rotate(var(--btn-rotate)) scale(0.9); }
+  100% { transform: translate(var(--jitter-x), var(--jitter-y)) rotate(var(--btn-rotate)) scale(var(--btn-scale)); }
+}
+
+@keyframes buttonCorrectBounce {
+  0% { transform: translate(var(--jitter-x), var(--jitter-y)) rotate(var(--btn-rotate)) scale(var(--btn-scale)); }
+  45% { transform: translate(var(--jitter-x), calc(var(--jitter-y) - 3px)) rotate(var(--btn-rotate)) scale(1.13); }
+  100% { transform: translate(var(--jitter-x), var(--jitter-y)) rotate(var(--btn-rotate)) scale(var(--btn-scale)); }
+}
+
+.particle {
+  position: absolute;
+  width: var(--size);
+  height: var(--size);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 30;
+  box-shadow: 0 0 10px currentColor;
+  animation: particleBurst 0.48s cubic-bezier(.12,.78,.25,1) forwards;
+}
+
+.reward-pop {
+  position: absolute;
+  top: 44%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 31;
+  pointer-events: none;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(34px, 9vw, 66px);
+  line-height: 1;
+  letter-spacing: 2px;
+  text-shadow: 0 0 18px currentColor;
+  animation: rewardPop 0.82s cubic-bezier(.13,.82,.2,1) forwards;
+}
+
+@keyframes particleBurst {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.15);
+  }
+}
+
+@keyframes rewardPop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.72); }
+  18% { opacity: 1; transform: translate(-50%, -54%) scale(1.08); }
+  100% { opacity: 0; transform: translate(-50%, -78%) scale(0.95); }
+}
+
+@keyframes arenaShakeSmall {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-3px, 2px); }
+  55% { transform: translate(3px, -1px); }
+  75% { transform: translate(-2px, 1px); }
+}
+
+@keyframes arenaShakeLevel {
+  0%, 100% { transform: translate(0, 0); }
+  35% { transform: translate(2px, -2px); }
+  70% { transform: translate(-2px, 1px); }
+}
+
+@keyframes arenaShakeBig {
+  0%, 100% { transform: translate(0, 0); }
+  18% { transform: translate(-7px, 3px); }
+  38% { transform: translate(6px, -3px); }
+  62% { transform: translate(-5px, 2px); }
+  82% { transform: translate(3px, -1px); }
+}
+
+@keyframes instructionPanic {
+  0%, 100% { color: var(--text); box-shadow: inset 0 0 0 rgba(255,0,255,0); }
+  50% { color: #ffd6ff; box-shadow: inset 0 0 18px rgba(255,0,255,0.1); }
+}
+
+@keyframes fakeGameOver {
+  0%, 100% { opacity: 0; transform: scale(0.92); }
+  30%, 70% { opacity: 1; transform: scale(1); }
 }
 
 /* LEVEL BANNER */
