@@ -57,6 +57,28 @@ let blinkTimer = null, shrinkTimer = null, fakeTimer = null;
 let gameActive = false;
 let shrinkAmount = 1.0;
 
+const sounds = {
+  correct: new Audio('sound/correct.mp3'),
+  combo: new Audio('sound/combo.mp3'),
+  levelup: new Audio('sound/levelup.mp3'),
+  gameover: new Audio('sound/gameover.mp3'),
+  wrong: new Audio('sound/wrong.mp3'),
+  music: new Audio('sound/music.mp3'),
+};
+
+sounds.music.loop = true;
+sounds.music.volume = 0.35;
+
+function playSound(name, volume = 1) {
+  if (!sounds[name]) return;
+
+  sounds[name].pause();
+  sounds[name].currentTime = 0;
+  sounds[name].volume = volume;
+
+  sounds[name].play().catch(() => {});
+}
+
 function $(id) { return document.getElementById(id); }
 
 function loadBestScore() {
@@ -345,10 +367,12 @@ function handleClick(i, btn) {
   if (i === targetIdx) {
     combo++;
     score++;
+    playSound('correct');
     btn.classList.add('correct-flash');
     setTimeout(() => btn.classList.remove('correct-flash'), 200);
 
     if (combo >= 3) {
+      playSound('combo');
       $('combo').textContent = `🔥 COMBO x${combo}`;
       $('combo').classList.add('hot');
     }
@@ -357,6 +381,7 @@ function handleClick(i, btn) {
     const newLevel = Math.min(Math.floor(score / 3) + 1, MAX_LEVEL);
     if (newLevel > level) {
       level = newLevel;
+      playSound('levelup');
       showLevelBanner(level);
       // Level 12: steal a life
       if (level === MAX_LEVEL) {
@@ -368,6 +393,7 @@ function handleClick(i, btn) {
     updateUI();
 
     if (score >= GOAL) {
+      sounds.music.pause();
       gameActive = false;
       clearTimers();
       clearInterval(timerInterval);
@@ -384,6 +410,7 @@ function handleClick(i, btn) {
   } else {
     combo = 0;
     lives--;
+    playSound('wrong');
     $('combo').textContent = '';
     $('combo').classList.remove('hot');
     btn.classList.add('wrong-flash');
@@ -394,6 +421,8 @@ function handleClick(i, btn) {
     updateUI();
 
     if (lives <= 0) {
+      playSound('gameover');
+      sounds.music.pause();
       gameActive = false;
       clearTimers();
       clearInterval(timerInterval);
@@ -417,6 +446,7 @@ function handleClick(i, btn) {
 function startGame() {
   score = 0; lives = 3; level = 1; combo = 0; attempts = 0;
   gameActive = true;
+  playSound('music', 0.35);
   startTimer();
   clearTimers();
   updateUI();
