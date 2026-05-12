@@ -53,9 +53,17 @@ const LEVEL_DEFS = [
 let score = 0, lives = 3, level = 1, combo = 0, attempts = 0, bestScore = 0;
 let timer = 0; let timerInterval = null;
 let targetIdx = 0, buttons = [], moveTimer = null, switchTimer = null;
-let blinkTimer = null, shrinkTimer = null, fakeTimer = null;
+let blinkTimer = null, shrinkTimer = null, fakeTimer = null, chaosTimer = null;
+let finalBossJitterTimer = null, finalBossFlickerTimer = null;
 let gameActive = false;
 let shrinkAmount = 1.0;
+let slowMotionUntil = 0;
+let buttonsFrozenUntil = 0;
+let comboSlowAwarded = false;
+let comboFreezeAwarded = false;
+let bestCelebratedThisRun = false;
+let runawayBtn = null;
+let musicRampTimer = null;
 
 const sounds = {
   correct: new Audio('sound/correct.mp3'),
@@ -81,6 +89,198 @@ function playSound(name, volume = 1) {
 
 function $(id) { return document.getElementById(id); }
 
+// --- GAME JUICE HELPERS ---
+function getClickPoint(event, fallbackEl) {
+  if (event && typeof event.clientX === 'number') {
+    return { x: event.clientX, y: event.clientY };
+  }
+  const rect = fallbackEl.getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
+
+function pointInArena(point) {
+  const rect = $('arena').getBoundingClientRect();
+  return { x: point.x - rect.left, y: point.y - rect.top };
+}
+
+function shakeArena(type = 'small') {
+  const arena = $('arena');
+  arena.classList.remove('shake-small', 'shake-level', 'shake-big');
+  void arena.offsetWidth;
+  arena.classList.add(`shake-${type}`);
+}
+
+function burstParticles(point, color = 'var(--green)', count = 12, power = 44) {
+  const arena = $('arena');
+  const origin = pointInArena(point);
+  const fragment = document.createDocumentFragment();
+
+  for (let i = 0; i < count; i++) {
+    const particle = document.createElement('span');
+    const angle = (Math.PI * 2 * i) / count + Math.random() * 0.45;
+    const distance = power * (0.45 + Math.random() * 0.75);
+    particle.className = 'particle';
+    particle.style.left = origin.x + 'px';
+    particle.style.top = origin.y + 'px';
+    particle.style.background = color;
+    particle.style.color = color;
+    particle.style.setProperty('--dx', Math.cos(angle) * distance + 'px');
+    particle.style.setProperty('--dy', Math.sin(angle) * distance + 'px');
+    particle.style.setProperty('--size', 3 + Math.random() * 4 + 'px');
+    fragment.appendChild(particle);
+    particle.addEventListener('animationend', () => particle.remove(), { once: true });
+  }
+
+  arena.appendChild(fragment);
+}
+
+function popButton(btn, className = 'btn-pop') {
+  btn.classList.remove(className);
+  void btn.offsetWidth;
+  btn.classList.add(className);
+  setTimeout(() => btn.classList.remove(className), 260);
+}
+
+function showRewardText(text, color = 'var(--yellow)') {
+  const arena = $('arena');
+  const reward = document.createElement('div');
+  reward.className = 'reward-pop';
+  reward.textContent = text;
+  reward.style.color = color;
+  arena.appendChild(reward);
+  reward.addEventListener('animationend', () => reward.remove(), { once: true });
+}
+
+function vibrate(pattern) {
+  if (navigator.vibrate) navigator.vibrate(pattern);
+}
+
+function updateMusicTension() {
+  const rate = Math.min(1.26, 1 + (level - 1) * 0.022);
+  sounds.music.volume = level >= 10 ? 0.43 : level >= 7 ? 0.39 : 0.35;
+  clearInterval(musicRampTimer);
+  musicRampTimer = setInterval(() => {
+    const diff = rate - sounds.music.playbackRate;
+    if (Math.abs(diff) < 0.005) {
+      sounds.music.playbackRate = rate;
+      clearInterval(musicRampTimer);
+      musicRampTimer = null;
+      return;
+    }
+    sounds.music.playbackRate += diff * 0.25;
+  }, 60);
+}
+
+function celebrateNewBest() {
+  if (bestCelebratedThisRun) return;
+  bestCelebratedThisRun = true;
+  toast('NEW BEST. THE GAME IS FURIOUS.', 'var(--yellow)');
+  document.body.classList.add('best-score-glow');
+  showRewardText('NEW BEST', 'var(--yellow)');
+  burstParticles({ x: window.innerWidth / 2, y: 120 }, 'var(--yellow)', 26, 80);
+  setTimeout(() => document.body.classList.remove('best-score-glow'), 900);
+}
+
+function clearJuiceEffects() {
+  document.body.classList.remove('final-boss-mode', 'best-score-glow');
+  $('arena').classList.remove('shake-small', 'shake-level', 'shake-big', 'freeze-buttons');
+  $('instruction').classList.remove('panic-flicker', 'fake-gameover-flash');
+  buttons.forEach(btn => {
+    btn.classList.remove('btn-pop', 'correct-bounce', 'wrong-flash', 'chaos-rotate', 'runaway');
+    btn.style.removeProperty('--btn-rotate');
+    btn.style.removeProperty('--jitter-x');
+    btn.style.removeProperty('--jitter-y');
+  });
+  runawayBtn = null;
+}
+
+function getMoveSpeed() {
+  const base = Math.max(180, 1600 - level * 120);
+  return Date.now() < slowMotionUntil ? Math.round(base * 1.85) : base;
+}
+
+function buttonsAreFrozen() {
+  return Date.now() < buttonsFrozenUntil;
+}
+
+function triggerComboRewards(point) {
+  if (combo === 5) {
+    showRewardText('COMBO x5', 'var(--green)');
+    burstParticles(point, 'var(--yellow)', 24, 74);
+    toast('combo x5. okay, main character.', 'var(--green)');
+  }
+
+  if (combo === 8 && !comboSlowAwarded) {
+    comboSlowAwarded = true;
+    slowMotionUntil = Date.now() + 1400;
+    showRewardText('SLOW-MO', 'var(--accent2)');
+    toast('SLOW MOTION: the buttons are scared.', 'var(--accent2)');
+    startMoving();
+  }
+
+  if (combo === 10 && !comboFreezeAwarded) {
+    comboFreezeAwarded = true;
+    buttonsFrozenUntil = Date.now() + 900;
+    $('arena').classList.add('freeze-buttons');
+    showRewardText('FREEZE', 'var(--yellow)');
+    toast('FREEZE FRAME. CLICK WITH PURPOSE.', 'var(--yellow)');
+    setTimeout(() => $('arena').classList.remove('freeze-buttons'), 900);
+  }
+}
+
+function applyFinalBossMode() {
+  const active = gameActive && level === MAX_LEVEL;
+  document.body.classList.toggle('final-boss-mode', active);
+  $('instruction').classList.toggle('panic-flicker', active);
+  if (!active) $('target-label').style.opacity = '1';
+}
+
+function runChaosEvent() {
+  if (!gameActive || buttons.length === 0 || Math.random() > 0.02) return;
+
+  const eventType = Math.floor(Math.random() * 4);
+
+  if (eventType === 0) {
+    const affected = [...buttons];
+    const originals = affected.map(btn => btn.textContent);
+    const fake = buttons[targetIdx] ? buttons[targetIdx].textContent : 'NOPE';
+    affected.forEach(btn => { btn.textContent = fake; });
+    toast('EVERY BUTTON IS DEFINITELY THE SAME. TRUST.', 'var(--accent2)');
+    setTimeout(() => {
+      affected.forEach((btn, idx) => {
+        if (btn.isConnected && originals[idx]) btn.textContent = originals[idx];
+      });
+      if (buttons[targetIdx]) $('target-label').textContent = '"' + buttons[targetIdx].textContent + '"';
+    }, 650);
+  } else if (eventType === 1) {
+    const affected = [...buttons];
+    affected.forEach(btn => {
+      btn.style.setProperty('--btn-rotate', (Math.random() * 18 - 9).toFixed(1) + 'deg');
+      btn.classList.add('chaos-rotate');
+    });
+    toast('BUTTONS GOT DIZZY.', 'var(--yellow)');
+    setTimeout(() => {
+      affected.forEach(btn => {
+        if (!btn.isConnected) return;
+        btn.classList.remove('chaos-rotate');
+        btn.style.removeProperty('--btn-rotate');
+      });
+    }, 700);
+  } else if (eventType === 2) {
+    $('instruction').classList.add('fake-gameover-flash');
+    toast('GAME OVER. kidding. maybe.', 'var(--accent)');
+    setTimeout(() => $('instruction').classList.remove('fake-gameover-flash'), 500);
+  } else {
+    runawayBtn = buttons[Math.floor(Math.random() * buttons.length)];
+    runawayBtn.classList.add('runaway');
+    toast('ONE BUTTON HAS CHOSEN COWARDICE.', 'var(--green)');
+    setTimeout(() => {
+      if (runawayBtn) runawayBtn.classList.remove('runaway');
+      runawayBtn = null;
+    }, 1600);
+  }
+}
+
 function loadBestScore() {
   try {
     bestScore = Number(localStorage.getItem('ragebait-best-score')) || 0;
@@ -90,11 +290,13 @@ function loadBestScore() {
 }
 
 function saveBestScore() {
-  if (score <= bestScore) return;
+  if (score <= bestScore) return false;
   bestScore = score;
   try {
     localStorage.setItem('ragebait-best-score', String(bestScore));
   } catch (e) {}
+  celebrateNewBest();
+  return true;
 }
 
 function accuracyText() {
@@ -225,7 +427,11 @@ function clearTimers() {
   clearInterval(blinkTimer);
   clearInterval(shrinkTimer);
   clearInterval(fakeTimer);
-  moveTimer = switchTimer = blinkTimer = shrinkTimer = fakeTimer = null;
+  clearInterval(chaosTimer);
+  clearInterval(finalBossJitterTimer);
+  clearInterval(finalBossFlickerTimer);
+  moveTimer = switchTimer = blinkTimer = shrinkTimer = fakeTimer = chaosTimer = null;
+  finalBossJitterTimer = finalBossFlickerTimer = null;
 }
 
 function clearButtons() {
@@ -259,7 +465,7 @@ function createButtons() {
     btn.style.left = pos.x + 'px';
     btn.style.top = pos.y + 'px';
     btn.dataset.index = i;
-    btn.addEventListener('click', () => handleClick(i, btn));
+    btn.addEventListener('click', event => handleClick(i, btn, event));
     arena.appendChild(btn);
     buttons.push(btn);
     occupied.push({ x: pos.x, y: pos.y, w: BUTTON_W, h: BUTTON_H });
@@ -268,12 +474,12 @@ function createButtons() {
 
 function startMoving() {
   clearTimers();
+  applyFinalBossMode();
 
   // --- MOVE TIMER (level 2+) ---
   if (level >= 2) {
-    const speed = Math.max(180, 1600 - level * 120);
     moveTimer = setInterval(() => {
-      if (!gameActive) return;
+      if (!gameActive || buttonsAreFrozen()) return;
       const wrongIdxs = buttons.map((_, i) => i).filter(i => i !== targetIdx);
       if (wrongIdxs.length > 0) {
         const pick = wrongIdxs[Math.floor(Math.random() * wrongIdxs.length)];
@@ -283,13 +489,13 @@ function startMoving() {
       if (level >= 4 && Math.random() < 0.55) {
         moveButtonTo(buttons[targetIdx], targetIdx);
       }
-    }, speed);
+    }, getMoveSpeed());
   }
 
   // --- BLINK (level 6+) ---
   if (level >= 6) {
     blinkTimer = setInterval(() => {
-      if (!gameActive) return;
+      if (!gameActive || buttonsAreFrozen()) return;
       const wrongIdxs = buttons.map((_, i) => i).filter(i => i !== targetIdx);
       if (wrongIdxs.length === 0) return;
       const pick = wrongIdxs[Math.floor(Math.random() * wrongIdxs.length)];
@@ -308,7 +514,7 @@ function startMoving() {
   // --- LABEL SWAP (level 7+) ---
   if (level >= 7) {
     switchTimer = setInterval(() => {
-      if (!gameActive || buttons.length < 2) return;
+      if (!gameActive || buttonsAreFrozen() || buttons.length < 2) return;
       const i = Math.floor(Math.random() * buttons.length);
       const j = (i + 1 + Math.floor(Math.random() * (buttons.length - 1))) % buttons.length;
       const tmp = buttons[i].textContent;
@@ -321,7 +527,7 @@ function startMoving() {
   // --- FAKE INSTRUCTION FLICKER (level 8+) ---
   if (level >= 8) {
     fakeTimer = setInterval(() => {
-      if (!gameActive) return;
+      if (!gameActive || buttonsAreFrozen()) return;
       const realLabel = buttons[targetIdx] ? buttons[targetIdx].textContent : '';
       // flash a random wrong label for 400ms
       const wrongBtns = buttons.filter((_, i) => i !== targetIdx);
@@ -345,31 +551,52 @@ function startMoving() {
       if (!gameActive) return;
       shrinkAmount = Math.max(0.55, shrinkAmount - 0.04);
       buttons.forEach(btn => {
-        btn.style.transform = `scale(${shrinkAmount})`;
+        btn.style.setProperty('--btn-scale', shrinkAmount);
         btn.style.fontSize = Math.max(9, 13 * shrinkAmount) + 'px';
       });
       if (shrinkAmount <= 0.56) {
         // reset sizes
         shrinkAmount = 1.0;
         buttons.forEach(btn => {
-          btn.style.transform = 'scale(1)';
+          btn.style.setProperty('--btn-scale', '1');
           btn.style.fontSize = '13px';
         });
       }
     }, 600);
   }
+
+  chaosTimer = setInterval(runChaosEvent, 950);
+
+  if (level === MAX_LEVEL) {
+    finalBossJitterTimer = setInterval(() => {
+      if (!gameActive) return;
+      buttons.forEach(btn => {
+        btn.style.setProperty('--jitter-x', (Math.random() * 4 - 2).toFixed(1) + 'px');
+        btn.style.setProperty('--jitter-y', (Math.random() * 4 - 2).toFixed(1) + 'px');
+      });
+    }, 130);
+
+    finalBossFlickerTimer = setInterval(() => {
+      if (!gameActive || !buttons[targetIdx]) return;
+      $('target-label').style.opacity = Math.random() < 0.45 ? '0.35' : '1';
+    }, 110);
+  }
 }
 
-function handleClick(i, btn) {
+function handleClick(i, btn, event) {
   if (!gameActive) return;
   attempts++;
+  const point = getClickPoint(event, btn);
+  popButton(btn);
 
   if (i === targetIdx) {
     combo++;
     score++;
     playSound('correct');
     btn.classList.add('correct-flash');
-    setTimeout(() => btn.classList.remove('correct-flash'), 200);
+    btn.classList.add('correct-bounce');
+    burstParticles(point, 'var(--green)', 13, 46);
+    setTimeout(() => btn.classList.remove('correct-flash', 'correct-bounce'), 260);
 
     if (combo >= 3) {
       playSound('combo');
@@ -377,11 +604,17 @@ function handleClick(i, btn) {
       $('combo').classList.add('hot');
     }
 
+    triggerComboRewards(point);
+
     // level up every 3 points
     const newLevel = Math.min(Math.floor(score / 3) + 1, MAX_LEVEL);
     if (newLevel > level) {
       level = newLevel;
       playSound('levelup');
+      updateMusicTension();
+      shakeArena('level');
+      burstParticles(point, 'var(--yellow)', 22, 70);
+      showRewardText(`LEVEL ${level}`, 'var(--yellow)');
       showLevelBanner(level);
       // Level 12: steal a life
       if (level === MAX_LEVEL) {
@@ -394,7 +627,10 @@ function handleClick(i, btn) {
 
     if (score >= GOAL) {
       sounds.music.pause();
+      clearInterval(musicRampTimer);
+      musicRampTimer = null;
       gameActive = false;
+      applyFinalBossMode();
       clearTimers();
       clearInterval(timerInterval);
       saveBestScore();
@@ -411,6 +647,9 @@ function handleClick(i, btn) {
     combo = 0;
     lives--;
     playSound('wrong');
+    vibrate(65);
+    shakeArena('small');
+    burstParticles(point, 'var(--accent)', 16, 52);
     $('combo').textContent = '';
     $('combo').classList.remove('hot');
     btn.classList.add('wrong-flash');
@@ -423,7 +662,13 @@ function handleClick(i, btn) {
     if (lives <= 0) {
       playSound('gameover');
       sounds.music.pause();
+      clearInterval(musicRampTimer);
+      musicRampTimer = null;
+      vibrate([120, 50, 160]);
+      shakeArena('big');
+      burstParticles(point, 'var(--accent)', 28, 95);
       gameActive = false;
+      applyFinalBossMode();
       clearTimers();
       clearInterval(timerInterval);
       saveBestScore();
@@ -445,14 +690,26 @@ function handleClick(i, btn) {
 
 function startGame() {
   score = 0; lives = 3; level = 1; combo = 0; attempts = 0;
+  slowMotionUntil = 0;
+  buttonsFrozenUntil = 0;
+  comboSlowAwarded = false;
+  comboFreezeAwarded = false;
+  bestCelebratedThisRun = false;
+  clearJuiceEffects();
   gameActive = true;
+  clearInterval(musicRampTimer);
+  musicRampTimer = null;
+  sounds.music.playbackRate = 0.96;
+  sounds.music.currentTime = 0;
   playSound('music', 0.35);
+  updateMusicTension();
   startTimer();
   clearTimers();
   updateUI();
   $('combo').textContent = '';
   $('combo').classList.remove('hot');
   $('target-label').style.color = '';
+  $('target-label').style.opacity = '1';
   showScreen(null);
   showLevelBanner(1);
   createButtons();
@@ -463,6 +720,30 @@ loadBestScore();
 updateUI();
 
 window.addEventListener('resize', keepButtonsInBounds);
+
+$('arena').addEventListener('pointermove', event => {
+  if (!gameActive || !runawayBtn || !runawayBtn.isConnected) return;
+
+  const btnRect = runawayBtn.getBoundingClientRect();
+  const dx = btnRect.left + btnRect.width / 2 - event.clientX;
+  const dy = btnRect.top + btnRect.height / 2 - event.clientY;
+  const distance = Math.hypot(dx, dy);
+  if (distance > 105) return;
+
+  const arenaRect = $('arena').getBoundingClientRect();
+  const push = 38;
+  const nextX = Math.min(
+    Math.max(12, parseFloat(runawayBtn.style.left) + (dx / Math.max(distance, 1)) * push),
+    arenaRect.width - (runawayBtn.offsetWidth || BUTTON_W) - 12
+  );
+  const nextY = Math.min(
+    Math.max(38, parseFloat(runawayBtn.style.top) + (dy / Math.max(distance, 1)) * push),
+    arenaRect.height - (runawayBtn.offsetHeight || BUTTON_H) - 26
+  );
+
+  runawayBtn.style.left = nextX + 'px';
+  runawayBtn.style.top = nextY + 'px';
+});
 
 document.addEventListener('keydown', event => {
   if ((event.key === 'Enter' || event.key === ' ') && !gameActive) {
