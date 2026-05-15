@@ -66,12 +66,12 @@ let runawayBtn = null;
 let musicRampTimer = null;
 
 const sounds = {
-  correct: new Audio('sound/correct.mp3'),
-  combo: new Audio('sound/combo.mp3'),
-  levelup: new Audio('sound/levelup.mp3'),
-  gameover: new Audio('sound/gameover.mp3'),
-  wrong: new Audio('sound/wrong.mp3'),
-  music: new Audio('sound/music.mp3'),
+  correct: new Audio('./sound/correct.mp3'),
+  combo: new Audio('./sound/combo.mp3'),
+  levelup: new Audio('./sound/levelup.mp3'),
+  gameover: new Audio('./sound/gameover.mp3'),
+  wrong: new Audio('./sound/wrong.mp3'),
+  music: new Audio('./sound/music.mp3'),
 };
 
 sounds.music.loop = true;
@@ -116,6 +116,181 @@ function playSound(name, volume = 1) {
 }
 
 function $(id) { return document.getElementById(id); }
+
+// --- ONLINE LEADERBOARD (Supabase) ---
+let leaderboardClient = null;
+let leaderboardSubmitInFlight = false;
+
+function isLeaderboardConfigured() {
+  const url = window.RAGEBAIT_SUPABASE_URL;
+  const key = window.RAGEBAIT_SUPABASE_ANON_KEY;
+  if (!url || !key || typeof url !== 'string' || typeof key !== 'string') return false;
+  if (url.includes('YOUR_PROJECT') || key === 'YOUR_ANON_KEY') return false;
+  return true;
+}
+
+function initLeaderboardClient() {
+  leaderboardClient = null;
+  if (!isLeaderboardConfigured()) return;
+  const ns = window.supabase;
+  try {
+    if (ns && typeof ns.createClient === 'function') {
+      leaderboardClient = ns.createClient(
+        window.RAGEBAIT_SUPABASE_URL,
+        window.RAGEBAIT_SUPABASE_ANON_KEY
+      );
+    } else if (ns && ns.default && typeof ns.default.createClient === 'function') {
+      leaderboardClient = ns.default.createClient(
+        window.RAGEBAIT_SUPABASE_URL,
+        window.RAGEBAIT_SUPABASE_ANON_KEY
+      );
+    }
+  } catch (e) {
+    leaderboardClient = null;
+  }
+}
+
+function sanitizePlayerName(raw) {
+  let s = String(raw == null ? '' : raw).trim();
+  s = s.replace(/[\u0000-\u001F\u007F]/g, '');
+  if (!s) return 'anon';
+  return s.slice(0, 12);
+}
+
+function renderLeaderboardRows(rows) {
+  const tbody = $('lb-tbody');
+  tbody.innerHTML = '';
+  if (!rows.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 6;
+    td.className = 'lb-empty';
+    td.textContent = 'No scores yet. Be first.';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+  rows.forEach((row, i) => {
+    const tr = document.createElement('tr');
+    const rank = document.createElement('td');
+    rank.textContent = String(i + 1);
+    const nameTd = document.createElement('td');
+    nameTd.className = 'lb-cell-name';
+    nameTd.textContent = row.player_name || 'anon';
+    const scoreTd = document.createElement('td');
+    scoreTd.textContent = String(row.score);
+    const lvlTd = document.createElement('td');
+    lvlTd.textContent = String(row.level_reached);
+    const timeTd = document.createElement('td');
+    timeTd.textContent = String(row.time_seconds) + 's';
+    const winTd = document.createElement('td');
+    winTd.textContent = row.won ? 'yes' : '—';
+    tr.appendChild(rank);
+    tr.appendChild(nameTd);
+    tr.appendChild(scoreTd);
+    tr.appendChild(lvlTd);
+    tr.appendChild(timeTd);
+    tr.appendChild(winTd);
+    tbody.appendChild(tr);
+  });
+}
+
+async function fetchLeaderboard() {
+  const status = $('lb-status');
+  const tbody = $('lb-tbody');
+  if (!leaderboardClient) {
+    status.textContent =
+      'Leaderboard unavailable. Copy config.example.js to config.js and add your Supabase URL + anon key.';
+    tbody.innerHTML = '';
+    return;
+  }
+  status.textContent = 'Loading…';
+  const { data, error } = await leaderboardClient
+    .from('ragebait_scores')
+    .select('player_name, score, level_reached, time_seconds, won, created_at')
+    .order('score', { ascending: false })
+    .order('time_seconds', { ascending: true })
+    .order('created_at', { ascending: false })
+    .limit(20);
+  if (error) {
+    status.textContent = 'Could not load leaderboard: ' + error.message;
+    tbody.innerHTML = '';
+    return;
+  }
+  status.textContent = 'Top 20. Higher score wins; ties break on faster time.';
+  renderLeaderboardRows(data || []);
+}
+
+function openLeaderboard() {
+  const overlay = $('lb-overlay');
+  overlay.classList.add('open');
+  overlay.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('lb-modal-open');
+  fetchLeaderboard();
+}
+
+function closeLeaderboard() {
+  const overlay = $('lb-overlay');
+  overlay.classList.remove('open');
+  overlay.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('lb-modal-open');
+}
+
+function refreshLeaderboard() {
+  fetchLeaderboard();
+}
+
+function updateEndScreenLeaderboardControls() {
+  const ok = !!leaderboardClient;
+  ['lb-submit-gameover', 'lb-submit-win'].forEach(id => {
+    const b = $(id);
+    if (b) {
+      b.disabled = !ok;
+      b.title = ok ? '' : 'Add Supabase credentials in config.js';
+    }
+  });
+}
+
+async function submitLeaderboardRun(won) {
+  if (!leaderboardClient) {
+    toast('Leaderboard not configured.', 'var(--accent)');
+    return;
+  }
+  if (leaderboardSubmitInFlight) return;
+  const inputId = won ? 'lb-name-win' : 'lb-name-gameover';
+  const btnId = won ? 'lb-submit-win' : 'lb-submit-gameover';
+  const name = sanitizePlayerName($(inputId).value);
+  const timeSeconds = Math.max(0, Math.floor(Number(timer)) || 0);
+  const levelReached = Math.min(MAX_LEVEL, Math.max(1, Math.floor(Number(level)) || 1));
+  let runScore = Math.min(GOAL, Math.max(0, Math.floor(Number(score)) || 0));
+  if (won && runScore < GOAL) runScore = GOAL;
+
+  leaderboardSubmitInFlight = true;
+  const btn = $(btnId);
+  const prev = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '…';
+
+  const { error } = await leaderboardClient.from('ragebait_scores').insert({
+    player_name: name,
+    score: runScore,
+    level_reached: levelReached,
+    time_seconds: timeSeconds,
+    won: !!won,
+  });
+
+  btn.disabled = !leaderboardClient;
+  btn.textContent = prev;
+  leaderboardSubmitInFlight = false;
+
+  if (error) {
+    toast('Submit failed: ' + error.message, 'var(--accent)');
+    updateEndScreenLeaderboardControls();
+    return;
+  }
+  toast('Score submitted.', 'var(--green)');
+  if ($('lb-overlay')?.classList.contains('open')) fetchLeaderboard();
+}
 
 // --- GAME JUICE HELPERS ---
 function getClickPoint(event, fallbackEl) {
@@ -665,6 +840,7 @@ function handleClick(i, btn, event) {
       $('win-score').textContent =
         `SCORE: ${score} | BEST: ${bestScore} | ACCURACY: ${accuracyText()}`;
       showScreen('win-screen');
+      updateEndScreenLeaderboardControls();
       return;
     }
 
@@ -705,6 +881,7 @@ function handleClick(i, btn, event) {
       const dt = deathTaunts[Math.floor(Math.random() * deathTaunts.length)];
       $('go-taunt').textContent = dt.replace('?', level);
       showScreen('gameover-screen');
+      updateEndScreenLeaderboardControls();
       return;
     }
 
@@ -717,6 +894,7 @@ function handleClick(i, btn, event) {
 }
 
 function startGame() {
+  closeLeaderboard();
   score = 0; lives = 3; level = 1; combo = 0; attempts = 0;
   slowMotionUntil = 0;
   buttonsFrozenUntil = 0;
@@ -744,6 +922,7 @@ function startGame() {
   startMoving();  
 }
 
+initLeaderboardClient();
 loadBestScore();
 updateUI();
 
@@ -773,9 +952,146 @@ $('arena').addEventListener('pointermove', event => {
   runawayBtn.style.top = nextY + 'px';
 });
 
+const lbOverlay = $('lb-overlay');
+if (lbOverlay) {
+  lbOverlay.addEventListener('click', e => {
+    if (e.target === lbOverlay) closeLeaderboard();
+  });
+}
+
 document.addEventListener('keydown', event => {
+  if ($('lb-overlay')?.classList.contains('open')) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeLeaderboard();
+    }
+    return;
+  }
   if ((event.key === 'Enter' || event.key === ' ') && !gameActive) {
     event.preventDefault();
     startGame();
   }
 });
+
+
+// ============================================================
+//  DON'T CLICK WRONG — Share Snippet v2
+//  Replace the old share snippet at the bottom of script.js
+//  with this. HTML must already exist in play.html.
+// ============================================================
+
+(function () {
+  const GAME_URL = 'https://rishabjainwork.github.io';
+
+  // ── Styles ──────────────────────────────────────────────
+  const s = document.createElement('style');
+  s.textContent = `
+    .dcw-share-box {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(0,0,0,0.35);
+      text-align: center;
+    }
+    .dcw-share-label {
+      font-size: 0.6rem;
+      letter-spacing: 0.22em;
+      color: #555;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .dcw-share-row {
+      display: flex;
+      gap: 7px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .dcw-share-btn {
+      font-family: inherit;
+      font-size: 0.65rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      text-decoration: none;
+      padding: 6px 11px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: transparent;
+      color: #888;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+    .dcw-share-btn:hover { color: #fff; border-color: #fff; }
+    .dcw-share-btn.tw:hover { color: #1d9bf0; border-color: #1d9bf0; }
+    .dcw-share-btn.wa:hover { color: #25d366; border-color: #25d366; }
+    .dcw-share-btn.rd:hover { color: #ff4500; border-color: #ff4500; }
+    .dcw-share-btn.cp:hover { color: #ffd700; border-color: #ffd700; }
+    .dcw-copied {
+      font-size: 0.58rem;
+      letter-spacing: 0.18em;
+      color: #ffd700;
+      margin-top: 7px;
+      min-height: 13px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .dcw-copied.show { opacity: 1; }
+  `;
+  document.head.appendChild(s);
+
+  // ── Copy helper (called from onclick in HTML) ────────────
+  window.dcwCopy = function (confirmedId) {
+    navigator.clipboard.writeText(GAME_URL).then(function () {
+      var el = document.getElementById(confirmedId);
+      if (!el) return;
+      el.classList.add('show');
+      setTimeout(function () { el.classList.remove('show'); }, 2200);
+    });
+  };
+
+  // ── Update share links with the live score text ──────────
+  function setLinks(suffix, scoreText, isWin) {
+    var msg = isWin
+      ? 'I just BEAT \u201cDON\u2019T CLICK WRONG\u201d! \uD83D\uDD25 ' + scoreText + ' \u2014 Can you do it?'
+      : 'I raged at \u201cDON\u2019T CLICK WRONG\u201d \uD83D\uDE24 ' + scoreText + ' \u2014 Think you can do better?';
+
+    var enc    = encodeURIComponent(msg);
+    var encUrl = encodeURIComponent(GAME_URL);
+    var rdTitle = isWin
+      ? encodeURIComponent("I beat DON\u2019T CLICK WRONG \u2014 brutal browser rage game")
+      : encodeURIComponent("DON\u2019T CLICK WRONG broke me \u2014 browser rage game");
+
+    var tw = document.getElementById('dcw-tw-' + suffix);
+    var wa = document.getElementById('dcw-wa-' + suffix);
+    var rd = document.getElementById('dcw-rd-' + suffix);
+
+    if (tw) tw.href = 'https://twitter.com/intent/tweet?text=' + enc + '&url=' + encUrl;
+    if (wa) wa.href = 'https://wa.me/?text=' + enc + '%20' + encUrl;
+    if (rd) rd.href = 'https://reddit.com/submit?url=' + encUrl + '&title=' + rdTitle;
+  }
+
+  // ── Poll for active screen and refresh links ─────────────
+  // Runs every 600ms. Costs nothing. Works regardless of how
+  // showScreen() is scoped inside script.js.
+  var lastSeen = '';
+
+  setInterval(function () {
+    var winEl = document.getElementById('win-screen');
+    var goEl  = document.getElementById('gameover-screen');
+
+    var winActive = winEl && winEl.classList.contains('active');
+    var goActive  = goEl  && goEl.classList.contains('active');
+
+    if (winActive && lastSeen !== 'win') {
+      lastSeen = 'win';
+      var scoreEl = document.getElementById('win-score');
+      setLinks('win', scoreEl ? scoreEl.textContent : '', true);
+    } else if (goActive && lastSeen !== 'go') {
+      lastSeen = 'go';
+      var scoreEl = document.getElementById('go-score');
+      setLinks('go', scoreEl ? scoreEl.textContent : '', false);
+    } else if (!winActive && !goActive) {
+      lastSeen = '';
+    }
+  }, 600);
+
+})();
