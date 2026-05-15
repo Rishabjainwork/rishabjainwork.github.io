@@ -981,7 +981,7 @@ document.addEventListener('keydown', event => {
 // ============================================================
 
 (function () {
-  const GAME_URL = 'https://rishabjainwork.github.io';
+  const GAME_URL = 'https://word-ragebait.vercel.app';
 
   // ── Styles ──────────────────────────────────────────────
   const s = document.createElement('style');
