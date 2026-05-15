@@ -90,13 +90,13 @@ No frameworks. No build tools. No dependencies.
 Clone the repository:
 
 ```bash
-git clone https://github.com/Rishabjainwork/rishabjainwork.github.io.git
+git clone https://github.com/Rishabjainwork/word-ragebait.git
 ```
 
 Open the project folder:
 
 ```bash
-cd rishabjainwork.github.io
+cd word-ragebait
 ```
 
 Then open `index.html` in your browser.
