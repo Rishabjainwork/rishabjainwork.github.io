@@ -12,11 +12,11 @@ The game starts easy, then quickly turns into moving buttons, fake labels, blink
 
 Project / GitHub link:
 
-https://github.com/Rishabjainwork/rishabjainwork.github.io
+https://github.com/Rishabjainwork/word-ragebait
 
-If this repository is deployed with GitHub Pages, the game can be played from:
+the game can be played from:
 
-https://Rishabjainwork.github.io
+https://word-ragebait.vercel.app/
 
 ## Preview
 
