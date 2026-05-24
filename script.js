@@ -3,7 +3,7 @@ const MAX_LEVEL = 12;
 const BUTTON_W = 130;
 const BUTTON_H = 40;
 const SAFE_GAP = 10;
-const livesIcons = ['', '❤️', '❤️❤️', '❤️❤️❤️'];
+const livesIcons = ['', '❤️', '❤️❤️', '❤️❤️❤️', '❤️❤️❤️❤️', '❤️❤️❤️❤️❤️'];
 
 const taunts = [
   "lmao no.", "skill issue", "that was embarrassing", "oh honey...",
@@ -50,7 +50,7 @@ const LEVEL_DEFS = [
   { name: "FINAL BOSS",  desc: "One chance. One life. One click. Good luck.", color: "#ff00ff"       },
 ];
 
-let score = 0, lives = 3, level = 1, combo = 0, attempts = 0, bestScore = 0;
+let score = 0, lives = 5, level = 1, combo = 0, attempts = 0, bestScore = 0;
 let timer = 0; let timerInterval = null;
 let targetIdx = 0, buttons = [], moveTimer = null, switchTimer = null;
 let blinkTimer = null, shrinkTimer = null, fakeTimer = null, chaosTimer = null;
@@ -569,7 +569,7 @@ function showScreen(id) {
 
 function updateUI() {
   $('score').textContent = score;
-  $('lives').textContent = livesIcons[Math.max(0, Math.min(lives, 3))] || '';
+  $('lives').textContent = livesIcons[Math.max(0, Math.min(lives, 5))] || '';
   $('level').textContent = level;
   $('lvl-inner').textContent = level;
   const pct = (score / GOAL) * 100;
@@ -916,7 +916,7 @@ function handleClick(i, btn, event) {
 
 function startGame() {
   closeLeaderboard();
-  score = 0; lives = 3; level = 1; combo = 0; attempts = 0;
+  score = 0; lives = 5; level = 1; combo = 0; attempts = 0;
   slowMotionUntil = 0;
   buttonsFrozenUntil = 0;
   comboSlowAwarded = false;
