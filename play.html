@@ -70,7 +70,14 @@
         <button type="button" class="screen-btn" id="lb-submit-gameover" onclick="submitLeaderboardRun(false)">SUBMIT SCORE</button>
       </div>
       <button type="button" class="screen-btn danger" onclick="startGame()">TRY AGAIN</button>
-      <!-- PASTE THIS INSIDE YOUR #gameover-screen div, after the leaderboard buttons -->
+
+      <!-- watch add button is here ,  -->
+          <button onclick="watchAd()" style="
+            margin-top: 10px; background: transparent;
+            border: 2px solid #ff3c3c; color: #ff3c3c;
+            padding: 10px 24px; font-family: monospace;
+            font-size: 14px; border-radius: 6px; cursor: pointer;
+          ">📺 Watch Ad for +1 Life ❤️</button>
 
       <div class="dcw-share-box" id="dcw-share-go">
         <div class="dcw-share-label">Make your friends suffer too</div>
@@ -94,7 +101,6 @@
         <button type="button" class="screen-btn" id="lb-submit-win" onclick="submitLeaderboardRun(true)">SUBMIT SCORE</button>
       </div>
       <button type="button" class="screen-btn" onclick="startGame()">PLAY AGAIN (it gets worse)</button>
-      <!-- PASTE THIS INSIDE YOUR #win-screen div, after the leaderboard buttons -->
 
       <div class="dcw-share-box" id="dcw-share-win">
         <div class="dcw-share-label">Make your friends suffer too</div>
