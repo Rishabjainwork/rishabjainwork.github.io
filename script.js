@@ -1,3 +1,95 @@
+// this is the add function //
+function watchAd() {
+  const adOverlay = document.createElement('div');
+  adOverlay.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.92); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 9999;
+    font-family: monospace;
+  `;
+  adOverlay.innerHTML = `
+    <p style="color:#aaa; font-size:12px; margin-bottom:16px;">
+      Watch this ad to earn +1 life ❤️
+    </p>
+    <a href="https://omg10.com/4/11057025" target="_blank" 
+       rel="noopener noreferrer"
+       onclick="document.getElementById('ad-countdown-wrap').style.display='block'"
+       style="
+         display: block; background: #ff3c3c; color: white;
+         padding: 24px 48px; font-size: 22px; font-weight: bold;
+         text-decoration: none; border-radius: 10px; text-align: center;
+         margin-bottom: 24px;
+       ">
+      📺 Click to Watch Ad<br>
+      <span style="font-size:13px; font-weight:normal;">
+        Opens in new tab — come back for your life ❤️
+      </span>
+    </a>
+    <div id="ad-countdown-wrap" style="display:none; text-align:center;">
+      <div style="color:#aaa; font-size:13px; margin-bottom:12px;">
+        Come back in <span id="ad-countdown">5</span>s
+      </div>
+      <div style="
+        width: 220px; height: 6px; background: #333; 
+        border-radius: 4px; overflow: hidden; margin: 0 auto;
+      ">
+        <div id="ad-progress" style="
+          height: 100%; width: 0%; background: #ff3c3c;
+          transition: width 5s linear; border-radius: 4px;
+        "></div>
+      </div>
+    </div>
+    <button id="claim-life-btn" disabled style="
+      margin-top: 24px; background: #333; color: #555;
+      border: 2px solid #444; padding: 12px 32px;
+      font-size: 16px; border-radius: 8px; cursor: not-allowed;
+      font-family: monospace; font-weight: bold;
+    ">⏳ Claim +1 Life</button>
+    <button onclick="document.body.removeChild(this.closest('[style]'))" style="
+      margin-top: 12px; background: transparent; color: #555;
+      border: none; font-size: 12px; cursor: pointer;
+      font-family: monospace;
+    ">✕ Cancel</button>
+  `;
+  document.body.appendChild(adOverlay);
+
+
+  // adds up there //
+
+  const claimBtn = adOverlay.querySelector('#claim-life-btn');
+
+  // Start countdown only after ad link is clicked
+  adOverlay.querySelector('a').addEventListener('click', () => {
+    const countdownEl = adOverlay.querySelector('#ad-countdown');
+    const progressEl = adOverlay.querySelector('#ad-progress');
+
+    // Start progress bar
+    setTimeout(() => { progressEl.style.width = '100%'; }, 100);
+
+    let seconds = 5;
+    const timer = setInterval(() => {
+      seconds--;
+      countdownEl.textContent = seconds;
+      if (seconds <= 0) {
+        clearInterval(timer);
+        claimBtn.disabled = false;
+        claimBtn.textContent = '❤️ Claim +1 Life';
+        claimBtn.style.cursor = 'pointer';
+        claimBtn.style.color = 'white';
+        claimBtn.style.background = '#c0392b';
+        claimBtn.style.borderColor = '#ff3c3c';
+        claimBtn.onclick = () => {
+          document.body.removeChild(adOverlay);
+          lives += 1;
+          gameActive = true;
+          showScreen('game-screen');
+          updateUI();
+          startTimer();
+        };
+      }
+    }, 1000);
+  });
+}
 const GOAL = 36; // 3 points per level × 12 levels
 const MAX_LEVEL = 12;
 const BUTTON_W = 130;
